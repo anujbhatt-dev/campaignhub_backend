@@ -1,9 +1,32 @@
+import hashlib
 from django.db import models
+from django.core.exceptions import ValidationError
+
 
 class UploadedFile(models.Model):
-    name = models.CharField(max_length=20,default='NA', unique=True)
+    name = models.CharField(max_length=40, default="NA", unique=True)
     file = models.FileField(upload_to="uploads/")
+    file_hash = models.CharField(max_length=64, unique=True, blank=True, null=True)  # Allow NULL
     uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        """Generate hash and ensure uniqueness before saving."""
+        if not self.file_hash and self.file:  # Only generate hash if not already set
+            self.file_hash = self.compute_file_hash()
+        
+        # Check uniqueness
+        if UploadedFile.objects.filter(file_hash=self.file_hash).exists():
+            raise ValidationError("File with the same content already exists.")
+
+        super().save(*args, **kwargs)
+
+    def compute_file_hash(self):
+        """Compute SHA-256 hash of the file content."""
+        hasher = hashlib.sha256()
+        self.file.seek(0)  # Ensure we read from the beginning
+        for chunk in self.file.chunks():
+            hasher.update(chunk)
+        return hasher.hexdigest()
 
 class CampaignData(models.Model):
     uploaded_file = models.ForeignKey(UploadedFile, on_delete=models.CASCADE, related_name="campaign_data")

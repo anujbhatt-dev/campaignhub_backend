@@ -1,3 +1,4 @@
+import hashlib
 import pandas as pd
 from rest_framework import status
 from rest_framework.parsers import MultiPartParser
@@ -15,10 +16,23 @@ class FileUploadView(APIView):
     parser_classes = [MultiPartParser]
 
     def post(self, request):
-        serializer = UploadedFileSerializer(data=request.data)
+        print("Received data:", request.data)
+        uploaded_file = request.FILES["file"]
+        file_name = request.data.get("name")  # Get 'name' from request data
+        file_hash = self.calculate_file_hash(uploaded_file)
+
+        # Check if file with the same hash already exists
+        if UploadedFile.objects.filter(file_hash=file_hash).exists():
+            return Response(
+                {"error": "Duplicate file upload detected."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Pass 'name' from request data instead of uploaded_file.name
+        serializer = UploadedFileSerializer(data={"name": file_name, "file": uploaded_file, "file_hash": file_hash})
         if serializer.is_valid():
-            uploaded_file = serializer.save()
-            self.process_data(uploaded_file)
+            uploaded_file_obj = serializer.save()
+            self.process_data(uploaded_file_obj)
             return Response({"message": "File uploaded and processed successfully"}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -122,6 +136,15 @@ class FileUploadView(APIView):
             )
 
         CampaignData.objects.bulk_create(bulk_data)
+
+    def calculate_file_hash(self, file):
+        """Calculate SHA256 hash of a file"""
+        hasher = hashlib.sha256()
+        for chunk in file.chunks():
+            hasher.update(chunk)
+        return hasher.hexdigest()
+
+
 
 class UploadedFileListView(APIView):
     def get(self, request):
