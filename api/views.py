@@ -163,30 +163,30 @@ class CampaignDataListView(APIView):
     def get(self, request):
         filters = Q()
 
-        client = request.query_params.get("client")
-        year = request.query_params.get("year")
-        product = request.query_params.get("product")
-        campaign = request.query_params.get("campaign")
-        list_segment = request.query_params.get("list_segment")
-        category = request.query_params.get("category")
+        # Extract filters from request query parameters
+        filter_params = {
+            "client": "client__icontains",
+            "year": "mail_date__year",
+            "product": "product__icontains",
+            "campaign": "mailing_code__icontains",
+            "segment": "segment__icontains",
+            "category": "category__icontains",
+            "source": "source__icontains"
+        }
+
+        # Apply filters dynamically
+        for param, field in filter_params.items():
+            value = request.query_params.get(param)
+            if value:
+                filters &= Q(**{field: value})
+
+        # Handle date range filtering
         days_from = request.query_params.get("days_from")
         days_to = request.query_params.get("days_to")
-
-        if client:
-            filters &= Q(client__icontains=client)
-        if year:
-            filters &= Q(mail_date__year=year)
-        if product:
-            filters &= Q(product__icontains=product)
-        if campaign:
-            filters &= Q(offer__icontains=campaign)
-        if list_segment:
-            filters &= Q(segment__icontains=list_segment)
-        if category:
-            filters &= Q(category__icontains=category)
         if days_from and days_to:
             filters &= Q(days__gte=days_from, days__lte=days_to)
 
+        # Filter the campaigns based on the applied filters
         campaigns = CampaignData.objects.filter(filters)
         serializer = CampaignDataSerializer(campaigns, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
